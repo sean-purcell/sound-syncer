@@ -2,6 +2,10 @@
  "playlists": [{
      "name": "Sean discovery weekly",
      "url": "https://open.spotify.com/playlist/37i9dQZEVXcKxcVUhnGNc0?si=5e59ad9008d74382"
+ },
+ {
+    "name": "Sean top tracks",
+    "url": "https://open.spotify.com/playlist/4t8Cy23puAe2iUPtgcjdJE?si=dfe852510e4a4989"
  }],
  "podcasts": [{
      "name": "Sean podcasts",
@@ -9,13 +13,13 @@
          "name": "Odd Lots",
          "url": "https://omny.fm/shows/odd-lots/playlists/podcast.rss",
          "keep_latest": 3,
-         "playback_speed": "1.5x"
+         "playback_speed": 1.5
      },
      {
         "name": "Serious Trouble",
         "url": "https://api.substack.com/feed/podcast/906465.rss",
-        "keep_latest": 3,
-        "playback_speed": "1.5x"
+        "keep_latest": 2,
+        "playback_speed": 1.5
      }]
  }]
 }
