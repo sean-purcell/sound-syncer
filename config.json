@@ -1,0 +1,14 @@
+{
+ "playlists": [{
+     "name": "Sean discovery weekly",
+     "url": "https://open.spotify.com/playlist/37i9dQZEVXcKxcVUhnGNc0?si=5e59ad9008d74382"
+ }],
+ "podcasts": [{
+     "name": "Sean podcasts",
+     "podcasts": [{
+         "url": "https://omny.fm/shows/odd-lots/playlists/podcast.rss",
+         "keep_latest": 3
+     }]
+ }]
+}
+
