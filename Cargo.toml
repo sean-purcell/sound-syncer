@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 eyre = "0.6.8"
+futures = "0.3.28"
+reqwest = "0.11.22"
 rss = "2.0.6"
 serde = { version = "1.0.189", features = ["derive"] }
 serde-lexpr = "0.1.3"

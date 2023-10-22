@@ -1,7 +1,11 @@
+use std::collections::HashMap;
 use std::process::Stdio;
 
+use futures::stream::{Stream, TryStream, TryStreamExt};
+
 use clap::Parser;
-use eyre::{Result, WrapErr};
+use eyre::{eyre, Report, Result, WrapErr};
+use rss::Channel;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::process::Command;
@@ -16,7 +20,7 @@ struct Playlist {
 struct Podcast {
     name: String,
     url: String,
-    keep_latest: u32,
+    keep_latest: usize,
     playback_speed: String,
 }
 
@@ -63,15 +67,44 @@ async fn sync_playlist(playlist: &Playlist, output_dir: &str) -> Result<()> {
         .wrap_err("Failed to execute spotdl")?;
     if status.success() {
         println!("Synced playlist");
+        Ok(())
     } else {
-        println!("Failed to sync playlist: {status:?}");
+        Err(eyre!(
+            "Failed to sync playlist {0}: {status:?}",
+            playlist.name
+        ))
     }
-    Ok(())
 }
 
 async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) -> Result<()> {
     let podcast_dir = create_and_get_dir(output_dir, &podcasts.name).await?;
-    for podcast in &podcasts.podcasts {}
+    println!("Processing podcast set {0}", podcasts.name);
+    let existing_files: HashMap<_, _> = fs::read_dir(podcast_dir)
+        .await
+        .wrap_err("Failed to read podcast dir")?
+        .map_err(Report::new)
+        .try_filter_map(|entry| {
+            entry
+                .file_name()
+                .into_string()
+                .wrap_err("Failed to convert path to string")?
+        })
+        .collect();
+    for podcast in &podcasts.podcasts {
+        println!("Fetching {0}", podcast.name);
+        let content = reqwest::get(&podcast.url)
+            .await
+            .wrap_err_with(|| {
+                format!(
+                    "Failed to fetch podcast {0} from {1}",
+                    podcast.name, podcast.url
+                )
+            })?
+            .bytes()
+            .await?;
+        let channel = Channel::read_from(&content[..])?;
+        for item in channel.items.iter().take(podcast.keep_latest) {}
+    }
     Ok(())
 }
 
@@ -88,7 +121,10 @@ async fn main() -> Result<()> {
     println!("Loaded config: {config:?}");
 
     for playlist in &config.playlists {
-        sync_playlist(playlist, args.output_dir.as_str());
+        sync_playlist(playlist, args.output_dir.as_str()).await?;
+    }
+    for podcast_set in &config.podcasts {
+        sync_podcasts(&podcast_set, args.output_dir.as_str()).await?;
     }
     Ok(())
 }
