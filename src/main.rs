@@ -1,7 +1,7 @@
 use std::process::Stdio;
 
 use clap::Parser;
-use eyre::{Report, Result, WrapErr};
+use eyre::{Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::process::Command;
@@ -41,11 +41,16 @@ struct Args {
     output_dir: String,
 }
 
+async fn create_and_get_dir(output_dir: &str, name: &str) -> Result<String> {
+    let dir = format!("{output_dir}/{name}");
+    fs::create_dir_all(&dir)
+        .await
+        .wrap_err_with(|| format!("Failed to create directory {dir}"))?;
+    Ok(dir)
+}
+
 async fn sync_playlist(playlist: &Playlist, output_dir: &str) -> Result<()> {
-    let playlist_dir = format!("{output_dir}/{0}", playlist.name);
-    fs::create_dir_all(&playlist_dir)
-        .wrap_err("Failed to create directory for playlist")
-        .await?;
+    let playlist_dir = create_and_get_dir(output_dir, &playlist.name).await?;
     let status = Command::new("spotdl")
         .current_dir(&playlist_dir)
         .stdin(Stdio::null())
@@ -55,18 +60,19 @@ async fn sync_playlist(playlist: &Playlist, output_dir: &str) -> Result<()> {
         .arg("playlist.spotdl")
         .status()
         .await
-        .wrap_err("Failed to execute spotdl");
+        .wrap_err("Failed to execute spotdl")?;
     if status.success() {
         println!("Synced playlist");
     } else {
         println!("Failed to sync playlist: {status:?}");
     }
+    Ok(())
 }
 
-async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) {
-    let playlist_dir = format!("{output_dir}/{0}", podcasts.name);
-    fs::create_dir_all(&playlist_dir).expect("Failed to create directory for podcast set");
+async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) -> Result<()> {
+    let podcast_dir = create_and_get_dir(output_dir, &podcasts.name).await?;
     for podcast in &podcasts.podcasts {}
+    Ok(())
 }
 
 #[tokio::main]
@@ -84,4 +90,5 @@ async fn main() -> Result<()> {
     for playlist in &config.playlists {
         sync_playlist(playlist, args.output_dir.as_str());
     }
+    Ok(())
 }
