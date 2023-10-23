@@ -1,3 +1,5 @@
+#![feature(exit_status_error)]
+
 use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
 
@@ -9,7 +11,7 @@ use eyre::{eyre, Report, Result, WrapErr};
 use filetime::{self, FileTime};
 use rss::Channel;
 use serde::{Deserialize, Serialize};
-use tokio::{fs, process::Command};
+use tokio::{fs, process};
 use tokio_stream::wrappers::ReadDirStream;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,6 +26,7 @@ struct Podcast {
     url: String,
     keep_latest: usize,
     playback_speed: f64,
+    volume: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,12 +42,23 @@ struct Config {
 }
 
 #[derive(Parser, Debug)]
-#[command()]
-struct Args {
+enum Command {
+    Update,
+    Sync {
+        #[arg(short, long)]
+        target: String,
+    },
+}
+
+#[derive(Parser, Debug)]
+struct Cli {
+    #[command(subcommand)]
+    subcommand: Command,
+
     #[arg(short, long)]
     config: String,
     #[arg(short, long)]
-    output_dir: String,
+    storage_dir: String,
 }
 
 async fn create_and_get_dir(output_dir: &str, name: &str) -> Result<String> {
@@ -57,7 +71,7 @@ async fn create_and_get_dir(output_dir: &str, name: &str) -> Result<String> {
 
 async fn sync_playlist(playlist: &Playlist, output_dir: &str) -> Result<()> {
     let playlist_dir = create_and_get_dir(output_dir, &playlist.name).await?;
-    let status = Command::new("spotdl")
+    let status = process::Command::new("spotdl")
         .current_dir(&playlist_dir)
         .stdin(Stdio::null())
         .arg("sync")
@@ -189,7 +203,7 @@ async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) -> Result<()> {
                 let url = enclosure.url;
                 println!("Downloading {file_name} from {url}");
                 let temp_file = tempdir.path().join(&file_name);
-                tokio::process::Command::new("curl")
+                process::Command::new("curl")
                     .arg("-L")
                     .arg(url)
                     .arg("-o")
@@ -200,11 +214,14 @@ async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) -> Result<()> {
                     .wrap_err("Failed to download episode")?;
                 println!("Adjusting playback speed");
                 let path = format!("{podcast_dir}/{file_name}");
-                tokio::process::Command::new("ffmpeg")
+                process::Command::new("ffmpeg")
                     .arg("-i")
                     .arg(&temp_file)
                     .arg("-filter:a")
-                    .arg(format!("atempo={0}", podcast.playback_speed))
+                    .arg(format!(
+                        "atempo={0},volume={1}",
+                        podcast.playback_speed, podcast.volume
+                    ))
                     .arg(&path)
                     .stdin(Stdio::null())
                     .status()
@@ -219,9 +236,38 @@ async fn sync_podcasts(podcasts: &PodcastSet, output_dir: &str) -> Result<()> {
     Ok(())
 }
 
+async fn sync_dir(name: &str, output_dir: &str, target: &str) -> Result<()> {
+    let src = format!("{output_dir}/{name}/");
+    let dst = format!("{target}/{name}/");
+    println!("Syncing from {src} to {dst}");
+    process::Command::new("rsync")
+        .arg("--info=progress2")
+        .arg("-av")
+        .arg("--delete")
+        .arg(src)
+        .arg(dst)
+        .stdin(Stdio::null())
+        .status()
+        .await
+        .wrap_err("Failed to start rsync")?
+        .exit_ok()
+        .wrap_err("Failed to sync directory")?;
+    Ok(())
+}
+
+async fn sync(config: &Config, output_dir: &str, target: &str) -> Result<()> {
+    for playlist in &config.playlists {
+        sync_dir(playlist.name.as_str(), output_dir, target).await?;
+    }
+    for podcast_set in &config.podcasts {
+        sync_dir(podcast_set.name.as_str(), output_dir, target).await?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
+    let args = Cli::parse();
     println!("Loading config: {0}", args.config);
 
     let config: Config = {
@@ -231,11 +277,18 @@ async fn main() -> Result<()> {
 
     println!("Loaded config: {config:?}");
 
-    for playlist in &config.playlists {
-        sync_playlist(playlist, args.output_dir.as_str()).await?;
-    }
-    for podcast_set in &config.podcasts {
-        sync_podcasts(&podcast_set, args.output_dir.as_str()).await?;
+    match args.subcommand {
+        Command::Update => {
+            for playlist in &config.playlists {
+                sync_playlist(playlist, args.storage_dir.as_str()).await?;
+            }
+            for podcast_set in &config.podcasts {
+                sync_podcasts(&podcast_set, args.storage_dir.as_str()).await?;
+            }
+        }
+        Command::Sync { target } => {
+            sync(&config, args.storage_dir.as_str(), target.as_str()).await?;
+        }
     }
     Ok(())
 }

@@ -13,13 +13,15 @@
          "name": "Odd Lots",
          "url": "https://omny.fm/shows/odd-lots/playlists/podcast.rss",
          "keep_latest": 3,
-         "playback_speed": 1.5
+         "playback_speed": 1.5,
+         "volume": 1.2
      },
      {
         "name": "Serious Trouble",
         "url": "https://api.substack.com/feed/podcast/906465.rss",
         "keep_latest": 2,
-        "playback_speed": 1.5
+        "playback_speed": 1.5,
+        "volume": 1.2
      }]
  }]
 }
